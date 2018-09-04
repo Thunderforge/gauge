@@ -131,15 +131,18 @@ var ExecuteSpecs = func(specDirs []string) int {
 	skel.SetupPlugins(MachineReadable)
 	res := validation.ValidateSpecs(specDirs, false)
 	if len(res.Errs) > 0 {
-		return 1
+		if res.ParseOk {
+			return ParseFailed
+		}
+		return ValidationFailed
 	}
 	if res.SpecCollection.Size() < 1 {
 		logger.Infof(true, "No specifications found in %s.", strings.Join(specDirs, ", "))
 		res.Runner.Kill()
 		if res.ParseOk {
-			return 0
+			return Success
 		}
-		return 1
+		return ExecutionFailed
 	}
 	event.InitRegistry()
 	wg := &sync.WaitGroup{}
@@ -253,22 +256,18 @@ func printExecutionStatus(suiteResult *result.SuiteResult, isParsingOk bool) int
 	}
 
 	s := statusJSON(nExecutedSpecs, nPassedSpecs, nFailedSpecs, nSkippedSpecs, nExecutedScenarios, nPassedScenarios, nFailedScenarios, nSkippedScenarios)
-	if MachineReadable {
-		// rather than printing a string status, print parseable json results.
-		// logger.Infof tries to convert json into another json (when machine-readable), which is ugly
-		fmt.Println(s)
-		fmt.Printf("{\"type\":\"out\", \"time\" : \"%s\" }\n", time.Millisecond*time.Duration(suiteResult.ExecutionTime))
-	} else {
-		logger.Infof(true, "Specifications:\t%d executed\t%d passed\t%d failed\t%d skipped", nExecutedSpecs, nPassedSpecs, nFailedSpecs, nSkippedSpecs)
-		logger.Infof(true, "Scenarios:\t%d executed\t%d passed\t%d failed\t%d skipped", nExecutedScenarios, nPassedScenarios, nFailedScenarios, nSkippedScenarios)
-		logger.Infof(true, "\nTotal time taken: %s", time.Millisecond*time.Duration(suiteResult.ExecutionTime))
-	}
+	logger.Infof(true, "Specifications:\t%d executed\t%d passed\t%d failed\t%d skipped", nExecutedSpecs, nPassedSpecs, nFailedSpecs, nSkippedSpecs)
+	logger.Infof(true, "Scenarios:\t%d executed\t%d passed\t%d failed\t%d skipped", nExecutedScenarios, nPassedScenarios, nFailedScenarios, nSkippedScenarios)
+	logger.Infof(true, "\nTotal time taken: %s", time.Millisecond*time.Duration(suiteResult.ExecutionTime))
 	writeExecutionStatus(s)
 
-	if suiteResult.IsFailed || !isParsingOk {
-		return 1
+	if !isParsingOk {
+		return ParseFailed
 	}
-	return 0
+	if suiteResult.IsFailed {
+		return ExecutionFailed
+	}
+	return Success
 }
 
 func validateFlags() error {
